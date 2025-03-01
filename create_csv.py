@@ -1,44 +1,56 @@
-import os, os.path
-import numpy as np
+import os
+import csv
 import cv2
 
+DATASET_PATH = "Training_Data"
+OUTPUT_PATH = "Training_Faces"
+CSV_FILE = "train_faces.csv"
+
+cv2_base_dir = os.path.dirname(cv2.__file__)
+CASCADE_PATH = os.path.join(cv2_base_dir, 'data', 'haarcascade_frontalface_default.xml')
+
+face_cascade = cv2.CascadeClassifier(CASCADE_PATH)
+
+if face_cascade.empty():
+    raise FileNotFoundError("Error: Haarcascade file not found!")
+
 def create():
+    if not os.path.exists(OUTPUT_PATH):
+        os.makedirs(OUTPUT_PATH)
 
-	if not "Training_Faces" in os.listdir("."):
-		os.mkdir("Training_Faces")
-	else:
-		return
-	
-	faceCascade = cv2.CascadeClassifier('haarcascade_face.xml')
+    try:
+        with open(CSV_FILE, "w", newline="") as file:
+            writer = csv.writer(file)
+            writer.writerow(["image_path", "label"])
 
-	label = 0
-	i=1
-	arr = []
+            for person in os.listdir(DATASET_PATH):
+                person_path = os.path.join(DATASET_PATH, person)
 
-	for dirname, dirnames, filenames in os.walk('Training_Data'):
+                if os.path.isdir(person_path):
+                    for image in os.listdir(person_path):
+                        image_path = os.path.join(person_path, image)
+                        file_name, file_ext = os.path.splitext(image.lower())
 
-		for subdirname in dirnames:
+                        if file_ext in [".jpg", ".jpeg", ".png"]:
+                            img = cv2.imread(image_path)
+                            if img is None:
+                                print(f"Warning: Unable to read image {image_path}")
+                                continue
 
-			subject_path = os.path.join(dirname, subdirname)
+                            gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+                            faces = face_cascade.detectMultiScale(gray, scaleFactor=1.1, minNeighbors=5, minSize=(30, 30))
 
-			for filename in os.listdir(subject_path):
+                            for i, (x, y, w, h) in enumerate(faces):
+                                face = gray[y:y + h, x:x + w]
+                                face_filename = f"{person}_{i}.jpg"
+                                face_path = os.path.join(OUTPUT_PATH, face_filename)
 
-				if filename.endswith('.jpg') or filename.endswith('.png') or filename.endswith('.jpeg'):
+                                cv2.imwrite(face_path, face)
+                                writer.writerow([face_path, person])
 
-					abs_path = "%s/%s" % (subject_path, filename)
-					image=cv2.imread(abs_path)
-					faces = faceCascade.detectMultiScale(image,scaleFactor=1.1,minNeighbors=5,minSize=(30, 30),flags = 0)
+        print(f"✅ CSV file '{CSV_FILE}' created successfully!")
+    except IOError as e:
+        print(f"Error: Unable to write to CSV file {CSV_FILE}. {e}")
 
-					for (x, y, w, h) in faces:
-						os.chdir("Training_Faces")
-						cv2.imwrite(str(label)+str(i)+".jpg",image[y-15:y+h+15,x-15:x+w+15])
-						arr.append( ["Training_Faces/"+str(label)+str(i)+".jpg",label] )
-						os.chdir("../")
-						cv2.rectangle(image, (x, y), (x+w, y+h), (0, 255, 0), 2)
-						i+=1
-					np.savetxt('train_faces.csv',arr,delimiter=',', fmt='%s')
-
-			label = label + 1
-
-	print ("CSV CREATED!")
-			
+if __name__ == "__main__":
+    create()
